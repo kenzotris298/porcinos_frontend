@@ -18,7 +18,7 @@ import { RecommendationsPage } from './pages/RecommendationsPage';
 
 export function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename="/porcinos_frontend">
       <AuthProvider>
         <ToastProvider>
           <LocalDataProvider>

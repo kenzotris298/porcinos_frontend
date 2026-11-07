@@ -2,6 +2,7 @@ import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
+  base: '/porcinos_frontend/',
   plugins: [react()],
   server: {
     port: 4173,
@@ -22,4 +23,6 @@ export default defineConfig({
     css: false,
     restoreMocks: true
   }
-});
+}
+
+);
