@@ -11,7 +11,8 @@ import {
 } from './ApiEvaluationPages';
 
 vi.mock('../api/client', () => ({
-  apiRequest: vi.fn()
+  apiRequest: vi.fn(),
+  apiUrl: (path: string) => `/api/v1${path.startsWith('/') ? path : `/${path}`}`
 }));
 
 describe('evaluaciones conectadas al sistema', () => {
@@ -251,6 +252,45 @@ describe('evaluaciones conectadas al sistema', () => {
         })
       );
     });
+  });
+
+  it('muestra el puntaje y la clasificación reales en la tarjeta de una evaluación finalizada', async () => {
+    const evaluation = {
+      id: 'evaluation-uuid',
+      farmId: 'farm-uuid',
+      farmName: 'Villa Esmeralda',
+      fecha: '2026-11-06',
+      hora: '23:12',
+      estado: 'Finalizada',
+      investigadorNombres: 'Camilo',
+      investigadorApellidos: 'Hernández',
+      observaciones: ''
+    };
+
+    vi.mocked(apiRequest).mockImplementation(async (path) => {
+      if (path === '/evaluations') return { items: [evaluation] };
+      if (path === '/farms') return { items: [{ id: 'farm-uuid', nombre: 'Villa Esmeralda' }] };
+      if (path === '/evaluations/evaluation-uuid/result') {
+        return {
+          result: {
+            methodologyVersion: 'EBA-Porcinos-3.0',
+            calculability: 'calculable',
+            score: 75.6,
+            classification: 'Alto bienestar',
+            coverage: { registered: 43, total: 43, pendingReview: 0, missing: [] },
+            reasons: []
+          }
+        };
+      }
+      throw new Error(`Solicitud inesperada: ${path}`);
+    });
+
+    await renderWithEvaluator(<ApiEvaluationsPage />);
+
+    expect(await screen.findByText('75,6')).toBeInTheDocument();
+    expect(screen.getByText('Alto bienestar')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Abrir evaluación de Villa Esmeralda/ }))
+      .toHaveAttribute('href', '/evaluaciones/evaluation-uuid');
   });
 
   it('no muestra acciones de creación para el propietario', async () => {

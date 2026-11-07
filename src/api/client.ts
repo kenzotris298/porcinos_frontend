@@ -1,5 +1,9 @@
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api/v1';
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(/\/+$/, '');
+
+export function apiUrl(path: string): string {
+  return `${API_BASE}${path.startsWith('/') ? path : `/${path}`}`;
+}
 
 let csrfToken: string | null = null;
 
@@ -52,7 +56,7 @@ async function readResponse<T>(response: Response): Promise<T> {
 
 async function fetchResponse(path: string, init: RequestInit): Promise<Response> {
   try {
-    return await fetch(`${API_BASE}${path}`, {
+    return await fetch(apiUrl(path), {
       ...init,
       credentials: 'include'
     });

@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { apiRequest } from '../api/client';
+import { apiRequest, apiUrl } from '../api/client';
 import { Alert } from '../components/Alert';
 import { Badge, scoreBadgeTone, statusTone } from '../components/Badge';
 import { Button } from '../components/Button';
@@ -118,6 +118,11 @@ interface ApiEvaluationResult {
   }>;
   reasons: string[];
 }
+
+type EvaluationPreview =
+  | { status: 'loading' }
+  | { status: 'error' }
+  | { status: 'loaded'; result: ApiEvaluationResult | null | undefined };
 
 function evidenceToBase64(bytes: Uint8Array): string {
   let binary = '';
@@ -410,6 +415,8 @@ export function ApiEvaluationsPage() {
   const [dateFilter, setDateFilter] = useState('');
   const [calendarMonth, setCalendarMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
 
+  const [evaluationPreviews, setEvaluationPreviews] = useState<Record<string, EvaluationPreview>>({});
+
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
@@ -430,6 +437,33 @@ export function ApiEvaluationsPage() {
   }, []);
 
   useEffect(() => { void load(); }, [load]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const finalized = evaluations.filter((evaluation) => evaluation.estado === 'Finalizada');
+
+    setEvaluationPreviews(Object.fromEntries(
+      finalized.map((evaluation) => [evaluation.id, { status: 'loading' as const }])
+    ));
+    if (!finalized.length) return;
+
+    void Promise.all(finalized.map(async (evaluation) => {
+      try {
+        const response = await apiRequest<{ result?: ApiEvaluationResult | null }>(
+          `/evaluations/${encodeURIComponent(evaluation.id)}/result`
+        );
+        return [evaluation.id, { status: 'loaded', result: response.result } satisfies EvaluationPreview] as const;
+      } catch {
+        return [evaluation.id, { status: 'error' } satisfies EvaluationPreview] as const;
+      }
+    })).then((entries) => {
+      if (!cancelled) setEvaluationPreviews(Object.fromEntries(entries));
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [evaluations]);
 
   const personFarmIds = useMemo(
     () => new Set(farms.filter((farm) => farm.personId === personFilter).map((farm) => farm.id)),
@@ -740,7 +774,19 @@ export function ApiEvaluationsPage() {
           />
         ) : (
           <div className="evaluation-grid">
-            {filtered.map((evaluation) => (
+            {filtered.map((evaluation) => {
+              const preview = evaluationPreviews[evaluation.id];
+              const result = preview?.status === 'loaded' ? preview.result : null;
+              const score = result?.score ?? null;
+              const previewLabel = result?.classification ||
+                (result?.calculability === 'not_calculable' ? 'No calculable' : null) ||
+                (preview?.status === 'loading' || (evaluation.estado === 'Finalizada' && !preview)
+                  ? 'Cargando…'
+                  : preview?.status === 'error'
+                    ? 'No disponible'
+                    : evaluation.estado === 'Finalizada' ? 'Sin resultado' : 'ver detalle');
+
+              return (
               <article className="evaluation-card" key={evaluation.id}>
                 <div className="evaluation-card__top">
                   <Badge tone={statusTone(evaluation.estado)}>{evaluation.estado}</Badge>
@@ -752,9 +798,9 @@ export function ApiEvaluationsPage() {
                       <h2>{farms.find((farm) => farm.id === evaluation.farmId)?.nombre ?? evaluation.farmName ?? 'Predio'}</h2>
                       <p><MapPin size={14} aria-hidden="true" /> Predio registrado en el sistema</p>
                     </div>
-                    <div className="score-tile score-tile--neutral">
-                      <strong>—</strong>
-                      <small>ver detalle</small>
+                    <div className={`score-tile score-tile--${scoreBadgeTone(score)}`}>
+                      <strong>{score == null ? '—' : formatNumber(score)}</strong>
+                      <small>{previewLabel}</small>
                     </div>
                   </div>
                   <div className="evaluation-card__meta">
@@ -768,7 +814,8 @@ export function ApiEvaluationsPage() {
                   </div>
                 ) : null}
               </article>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>
@@ -1585,15 +1632,16 @@ export function ApiEvaluationDetailPage() {
                           .map((item) => (
                             <a
                               className="evidence-indicator-photo"
-                              href={`/api/v1/evidence/${encodeURIComponent(item.id)}/content`}
+                              href={apiUrl(`/evidence/${encodeURIComponent(item.id)}/content`)}
                               target="_blank"
                               rel="noreferrer"
                               key={item.id}
                             >
                               <img
-                                src={`/api/v1/evidence/${encodeURIComponent(item.id)}/content`}
+                                src={apiUrl(`/evidence/${encodeURIComponent(item.id)}/content`)}
                                 alt={item.nombre}
                                 loading="lazy"
+                                crossOrigin="use-credentials"
                               />
                               <span>{item.nombre}</span>
                             </a>
@@ -1615,7 +1663,7 @@ export function ApiEvaluationDetailPage() {
                 <Link to={`/evidencias?evaluacion=${encodeURIComponent(id)}`} className="file-row" key={item.id}>
                   <span className="file-row__thumb">
                     {item.mimeType.startsWith('image/')
-                      ? <img src={`/api/v1/evidence/${encodeURIComponent(item.id)}/content`} alt="" loading="lazy" />
+                      ? <img src={apiUrl(`/evidence/${encodeURIComponent(item.id)}/content`)} alt="" loading="lazy" crossOrigin="use-credentials" />
                       : <FileText size={20} aria-hidden="true" />}
                   </span>
                   <span className="file-row__text">

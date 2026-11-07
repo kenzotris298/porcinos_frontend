@@ -1,10 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { apiRequest, clearApiCsrfToken } from './client';
+import { apiRequest, apiUrl, clearApiCsrfToken } from './client';
 
 describe('cliente de API', () => {
   afterEach(() => {
     clearApiCsrfToken();
     vi.unstubAllGlobals();
+  });
+
+  it('construye rutas de API desde la base configurada por el despliegue', () => {
+    expect(apiUrl('/auth/me')).toBe('/api/v1/auth/me');
   });
 
   it('envía cookies y token CSRF en las solicitudes de escritura', async () => {

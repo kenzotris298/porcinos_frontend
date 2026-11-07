@@ -6,7 +6,8 @@ import { renderWithEvaluator } from '../test/renderWithEvaluator';
 import { ApiEvidencePage } from './ApiEvidencePage';
 
 vi.mock('../api/client', () => ({
-  apiRequest: vi.fn()
+  apiRequest: vi.fn(),
+  apiUrl: (path: string) => `/api/v1${path.startsWith('/') ? path : `/${path}`}`
 }));
 
 describe('evidencias conectadas al sistema', () => {

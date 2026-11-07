@@ -1,7 +1,7 @@
 import { ChevronLeft, Eye, FileText, Folder, FolderOpen, Images, Search } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { apiRequest } from '../api/client';
+import { apiRequest, apiUrl } from '../api/client';
 import { Alert } from '../components/Alert';
 import { Badge } from '../components/Badge';
 import { Button } from '../components/Button';
@@ -238,13 +238,17 @@ export function ApiEvidencePage() {
                   <article className="evidence-card" key={item.id}>
                     <a
                       className="evidence-card__preview"
-                      href={`/api/v1/evidence/${encodeURIComponent(item.id)}/content`}
+                      href={apiUrl(`/evidence/${encodeURIComponent(item.id)}/content`)}
                       target="_blank"
                       rel="noreferrer"
                       aria-label={`Ver evidencia ${item.nombre}`}
                     >
                       {item.mimeType.startsWith('image/') ? (
-                        <img src={`/api/v1/evidence/${encodeURIComponent(item.id)}/content`} alt="" />
+                        <img
+                          src={apiUrl(`/evidence/${encodeURIComponent(item.id)}/content`)}
+                          alt=""
+                          crossOrigin="use-credentials"
+                        />
                       ) : (
                         <span className="evidence-card__placeholder"><FileText size={36} aria-hidden="true" /><small>PDF</small></span>
                       )}
