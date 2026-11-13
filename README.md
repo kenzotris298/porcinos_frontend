@@ -18,9 +18,9 @@ Copy-Item .env.example .env
 npm run dev
 ```
 
-Vite inicia la aplicación en `http://localhost:4173`. En desarrollo, las peticiones a `/api/v1` se envían al backend en `http://127.0.0.1:8000`, según la configuración de [vite.config.ts](./vite.config.ts).
+Vite inicia la aplicación en `http://localhost:4173`. En desarrollo, las peticiones a `/api/v1` se envían al backend en `http://127.0.0.1:8000` por defecto. Si el puerto o dirección del backend cambia, define `VITE_API_PROXY_TARGET` (por ejemplo, `http://127.0.0.1:8002`) en `.env.local` y reinicia Vite.
 
-Si el backend está en otra dirección, configura `VITE_API_BASE_URL` en `.env`. No pongas secretos en variables `VITE_*`: sus valores se incluyen en el código público del navegador.
+`VITE_API_BASE_URL` configura la ruta que usa el frontend; `VITE_API_PROXY_TARGET` configura el destino del proxy de desarrollo. No pongas secretos en variables `VITE_*`: sus valores se incluyen en el código público del navegador.
 
 ## Comandos
 

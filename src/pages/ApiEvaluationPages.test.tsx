@@ -1,4 +1,5 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Link, Navigate, Route, Routes } from 'react-router-dom';
 import { apiRequest } from '../api/client';
@@ -219,6 +220,7 @@ describe('evaluaciones conectadas al sistema', () => {
   }, 20_000);
 
   it('crea y asigna una evaluación a la cuenta evaluadora autenticada mediante la API', async () => {
+    const user = userEvent.setup();
     vi.mocked(apiRequest).mockImplementation(async (path, options) => {
       if (path === '/evaluations' && !options?.method) return { items: [] };
       if (path === '/farms') return { items: [{ id: 'farm-uuid', nombre: 'Predio' }] };
@@ -231,9 +233,9 @@ describe('evaluaciones conectadas al sistema', () => {
     const dialog = screen.getByRole('dialog', { name: 'Nueva visita' });
     expect(dialog).toBeInTheDocument();
     expect(within(dialog).getByRole('heading', { name: 'Nueva visita' })).toBeInTheDocument();
-    fireEvent.change(within(dialog).getByLabelText(/Nombres del investigador/), {
-      target: { value: 'Kevin' }
-    });
+    const firstNameInput = within(dialog).getByLabelText(/Nombres del investigador/);
+    await user.type(firstNameInput, 'Kevin');
+    expect(firstNameInput).toHaveFocus();
     fireEvent.change(within(dialog).getByLabelText(/Apellidos del investigador/), {
       target: { value: 'Santiago' }
     });

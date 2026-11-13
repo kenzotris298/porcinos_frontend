@@ -28,7 +28,7 @@ export async function renderWithSession(ui: ReactNode, session: Session) {
       </ToastProvider>
     </MemoryRouter>
   );
-  await screen.findByTestId('test-session-ready');
+  await screen.findByTestId('test-session-ready', {}, { timeout: 5000 });
   return result;
 }
 

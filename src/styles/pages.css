@@ -994,33 +994,37 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.75rem 1rem 0.15rem;
+  padding: 0.55rem 0.75rem 0.1rem;
 }
 
 .evaluation-card__code {
+  max-width: 56%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--muted-soft);
-  font-size: 0.67rem;
+  font-size: 0.62rem;
   font-weight: 700;
-  letter-spacing: 0.05em;
+  letter-spacing: 0;
 }
 
 .evaluation-card__body {
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 0.7rem;
-  padding: 0.5rem 1rem 0.95rem;
+  gap: 0.45rem;
+  padding: 0.35rem 0.75rem 0.65rem;
 }
 
 .evaluation-card__heading {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 0.75rem;
+  gap: 0.5rem;
 }
 
 .evaluation-card__heading h2 {
-  font-size: 0.98rem;
+  font-size: 0.9rem;
   font-weight: 750;
 }
 
@@ -1030,15 +1034,15 @@
   gap: 0.24rem;
   margin-top: 0.18rem;
   color: var(--muted);
-  font-size: 0.72rem;
+  font-size: 0.66rem;
 }
 
 .evaluation-card__meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.35rem 0.9rem;
+  gap: 0.3rem 0.6rem;
   color: var(--muted);
-  font-size: 0.71rem;
+  font-size: 0.66rem;
 }
 
 .evaluation-card__meta span {
@@ -1100,6 +1104,20 @@
   line-height: 1;
 }
 
+.evaluation-card .score-tile {
+  min-width: 52px;
+  padding: 0.3rem 0.42rem;
+  border-radius: 9px;
+}
+
+.evaluation-card .score-tile strong {
+  font-size: 1.05rem;
+}
+
+.evaluation-card .score-tile small {
+  font-size: 0.5rem;
+}
+
 .score-tile strong {
   font-size: 1.3rem;
   font-weight: 800;
@@ -1145,8 +1163,8 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 1.5rem;
-  padding: 1.55rem 1.75rem;
+  gap: 1rem;
+  padding: 1.15rem 1.3rem;
   overflow: hidden;
   border-radius: var(--radius-lg);
   background:
@@ -1169,24 +1187,24 @@
 
 .detail-hero h2 {
   color: #fff;
-  font-size: 1.45rem;
+  font-size: 1.25rem;
   font-weight: 800;
 }
 
 .detail-hero__description {
-  margin-top: 0.45rem;
+  margin-top: 0.35rem;
   color: rgba(255, 255, 255, 0.74);
-  font-size: 0.86rem;
+  font-size: 0.8rem;
   line-height: 1.6;
 }
 
 .detail-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.45rem 1rem;
-  margin-top: 0.9rem;
+  gap: 0.35rem 0.75rem;
+  margin-top: 0.65rem;
   color: rgba(255, 255, 255, 0.66);
-  font-size: 0.74rem;
+  font-size: 0.68rem;
 }
 
 .detail-meta span {
@@ -1212,15 +1230,15 @@
 }
 
 .detail-hero__score .score-tile {
-  min-width: 96px;
-  padding: 0.65rem 0.75rem;
+  min-width: 84px;
+  padding: 0.48rem 0.6rem;
   border-color: rgba(255, 255, 255, 0.2);
   background: rgba(255, 255, 255, 0.1);
   color: #fff;
 }
 
 .detail-hero__score .score-tile strong {
-  font-size: 1.95rem;
+  font-size: 1.65rem;
 }
 
 .detail-hero__score .score-tile small {
@@ -1230,14 +1248,14 @@
 .detail-hero__score > span {
   margin-top: 0.25rem;
   color: #d6efe4;
-  font-size: 0.71rem;
+  font-size: 0.67rem;
   font-weight: 700;
 }
 
 .detail-hero__score > small {
   max-width: 16ch;
   color: rgba(255, 255, 255, 0.52);
-  font-size: 0.64rem;
+  font-size: 0.6rem;
 }
 
 .pending-list {

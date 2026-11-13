@@ -7,11 +7,18 @@ import { Button } from '../components/Button';
 import { FormField, TextInput } from '../components/FormField';
 import { PageHeader } from '../components/PageHeader';
 import { apiRequest } from '../api/client';
-import { DEPARTMENTS, municipalitiesForDepartment } from '../data/colombia';
+import {
+  classifyProductionStratum,
+  DEPARTMENTS,
+  deriveProductionSystem,
+  municipalitiesForDepartment,
+  PRODUCTION_SYSTEMS
+} from '../data/colombia';
 import { useToast } from '../components/ToastProvider';
 
 interface ApiPerson {
   id: string;
+  cedula: string;
   nombres: string;
 }
 
@@ -42,38 +49,59 @@ export function ApiPersonRegistrationPage() {
   const [verifying, setVerifying] = useState(false);
   const [saving, setSaving] = useState(false);
   const [people, setPeople] = useState<ApiPerson[]>([]);
-  const [farms, setFarms] = useState<ApiFarm[]>([]);
-  const [farmPersonId, setFarmPersonId] = useState('');
+  const [registeredPerson, setRegisteredPerson] = useState<ApiPerson | null>(null);
+  const [createdFarms, setCreatedFarms] = useState<ApiFarm[]>([]);
+  const [farmCedula, setFarmCedula] = useState('');
+  const [farmPersonError, setFarmPersonError] = useState<string | undefined>();
+  const [farmCountError, setFarmCountError] = useState<string | undefined>();
+  const [submittedFarmPersonId, setSubmittedFarmPersonId] = useState('');
   const [farmName, setFarmName] = useState('');
   const [departmentCode, setDepartmentCode] = useState('');
   const [municipalityCode, setMunicipalityCode] = useState('');
   const [farmPath, setFarmPath] = useState('');
   const [animalCount, setAnimalCount] = useState('');
-  const [breedingFemales, setBreedingFemales] = useState('0');
-  const [fatteningAnimals, setFatteningAnimals] = useState('0');
+  const [breedingFemales, setBreedingFemales] = useState('');
+  const [fatteningAnimals, setFatteningAnimals] = useState('');
   const [savingFarm, setSavingFarm] = useState(false);
   const municipalities = municipalitiesForDepartment(departmentCode);
+  const phaseCountsEntered = breedingFemales !== '' || fatteningAnimals !== '';
+  const breedingCount = Number(breedingFemales || 0);
+  const fatteningCount = Number(fatteningAnimals || 0);
+  const productionSystem = phaseCountsEntered
+    ? deriveProductionSystem({
+      hembrasCria: breedingCount,
+      animalesGordos: fatteningCount
+    })
+    : '';
+  const productionSystemLabel =
+    PRODUCTION_SYSTEMS.find((item) => item.value === productionSystem)?.label ?? '';
+  const productionStratum = classifyProductionStratum({
+    tipo: productionSystem,
+    hembrasCria: breedingCount,
+    animalesGordos: fatteningCount
+  });
+  const availablePeople =
+    registeredPerson && !people.some((item) => item.id === registeredPerson.id)
+      ? [...people, registeredPerson]
+      : people;
+  const matchedFarmPerson = availablePeople.find((item) => item.cedula === farmCedula.trim());
+  const selectedFarms = matchedFarmPerson
+    ? createdFarms.filter((farm) => farm.personId === matchedFarmPerson.id)
+    : [];
+  const showSubmittedFarms =
+    Boolean(matchedFarmPerson) && submittedFarmPersonId === matchedFarmPerson?.id;
 
-  const loadPeopleAndFarms = async () => {
+  const loadPeople = async () => {
     try {
-      const [peopleResponse, farmResponse] = await Promise.all([
-        apiRequest<{ items: ApiPerson[] }>('/people'),
-        apiRequest<{ items: ApiFarm[] }>('/farms')
-      ]);
+      const peopleResponse = await apiRequest<{ items: ApiPerson[] }>('/people');
       setPeople(peopleResponse.items);
-      setFarms(farmResponse.items);
-      setFarmPersonId((current) =>
-        peopleResponse.items.some((item) => item.id === current)
-          ? current
-          : peopleResponse.items[0]?.id ?? ''
-      );
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'No se pudieron cargar personas y predios.');
+      setError(reason instanceof Error ? reason.message : 'No se pudieron cargar las personas.');
     }
   };
 
   useEffect(() => {
-    void loadPeopleAndFarms();
+    void loadPeople();
   }, []);
 
   function updatePerson<K extends keyof PersonDraft>(key: K, value: PersonDraft[K]) {
@@ -142,12 +170,18 @@ export function ApiPersonRegistrationPage() {
           verificationToken
         }
       });
+      setRegisteredPerson({
+        id: response.id,
+        cedula: person.cedula.trim(),
+        nombres: response.nombres
+      });
       setPersonId(response.id);
       setVerificationToken('');
+      setFarmCedula(person.cedula.trim());
       setPerson(EMPTY_PERSON);
       setCode('');
       notify('Persona registrada en el sistema.');
-      await loadPeopleAndFarms();
+      await loadPeople();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'No se pudo registrar la persona.');
     } finally {
@@ -157,13 +191,27 @@ export function ApiPersonRegistrationPage() {
 
   async function createFarm(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!matchedFarmPerson) {
+      setFarmPersonError(
+        'No encontramos una persona registrada con esa cédula. Verifica primero su correo y regístrala.'
+      );
+      return;
+    }
+    if (Number(breedingFemales) + Number(fatteningAnimals) > Number(animalCount)) {
+      setFarmCountError(
+        'La suma de hembras de cría y animales de engorde no puede superar el total de animales.'
+      );
+      return;
+    }
     setSavingFarm(true);
     setError(null);
+    setFarmPersonError(undefined);
+    setFarmCountError(undefined);
     try {
       const response = await apiRequest<ApiFarm>('/farms', {
         method: 'POST',
         body: {
-          personId: farmPersonId,
+          personId: matchedFarmPerson.id,
           codigoDepartamento: departmentCode,
           codigoMunicipio: municipalityCode,
           nombre: farmName.trim(),
@@ -173,13 +221,17 @@ export function ApiPersonRegistrationPage() {
           animalesGordos: Number(fatteningAnimals)
         }
       });
+      if (response.personId !== matchedFarmPerson.id) {
+        throw new Error('El backend no confirmó que el predio pertenezca a la persona indicada.');
+      }
       notify('Predio registrado y vinculado a la persona.');
+      setSubmittedFarmPersonId(matchedFarmPerson.id);
       setFarmName('');
       setFarmPath('');
       setAnimalCount('');
-      setBreedingFemales('0');
-      setFatteningAnimals('0');
-      setFarms((current) => [...current, response]);
+      setBreedingFemales('');
+      setFatteningAnimals('');
+      setCreatedFarms((current) => [...current, response]);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'No se pudo registrar el predio.');
     } finally {
@@ -327,51 +379,128 @@ export function ApiPersonRegistrationPage() {
               <h2>Vincular un predio a una persona</h2>
             </div>
           </header>
-          {!people.length ? (
-            <Alert tone="info">Registra primero a la persona responsable para crear su predio.</Alert>
-          ) : (
-            <form className="form" onSubmit={createFarm}>
-              <FormField id="api-farm-person" label="Persona responsable" required>
-                <select id="api-farm-person" className="input input--select" value={farmPersonId} onChange={(event) => setFarmPersonId(event.target.value)} required>
-                  {people.map((item) => <option key={item.id} value={item.id}>{item.nombres}</option>)}
+          <form className="form" onSubmit={createFarm}>
+            <div className="form-grid form-grid--two">
+              <FormField
+                id="api-farm-cedula"
+                label="Cédula de la persona responsable"
+                error={farmPersonError}
+                required
+              >
+                <TextInput
+                  id="api-farm-cedula"
+                  inputMode="numeric"
+                  pattern="[0-9]{5,15}"
+                  minLength={5}
+                  maxLength={15}
+                  value={farmCedula}
+                  onChange={(event) => {
+                    setFarmCedula(event.target.value);
+                    setFarmPersonError(undefined);
+                    setSubmittedFarmPersonId('');
+                  }}
+                  required
+                />
+              </FormField>
+              <FormField id="api-farm-person" label="Persona responsable">
+                <TextInput id="api-farm-person" value={matchedFarmPerson?.nombres ?? ''} readOnly />
+              </FormField>
+              <FormField
+                id="api-farm-type"
+                label="Sistema de producción"
+                hint="Se determina según las fases productivas registradas."
+              >
+                <TextInput
+                  id="api-farm-type"
+                  value={productionSystemLabel}
+                  placeholder="Ingresa las cantidades por fase"
+                  readOnly
+                />
+              </FormField>
+              <FormField
+                id="api-farm-stratum"
+                label="Estrato productivo ICA"
+                hint={productionStratum.detail}
+              >
+                <TextInput
+                  id="api-farm-stratum"
+                  value={productionStratum.value === 'incomplete' ? '' : productionStratum.label}
+                  readOnly
+                />
+              </FormField>
+            </div>
+            <div className="form-grid form-grid--two">
+              <FormField id="api-farm-name" label="Nombre del predio" required>
+                <TextInput id="api-farm-name" value={farmName} maxLength={180} onChange={(event) => setFarmName(event.target.value)} required />
+              </FormField>
+              <FormField id="api-farm-path" label="Vereda">
+                <TextInput id="api-farm-path" value={farmPath} maxLength={180} onChange={(event) => setFarmPath(event.target.value)} />
+              </FormField>
+              <FormField id="api-farm-department" label="Departamento" required>
+                <select id="api-farm-department" className="input input--select" value={departmentCode} onChange={(event) => { setDepartmentCode(event.target.value); setMunicipalityCode(''); }} required>
+                  <option value="">Selecciona un departamento</option>
+                  {DEPARTMENTS.map((item) => <option key={item.code} value={item.code}>{item.name}</option>)}
                 </select>
               </FormField>
-              <div className="form-grid form-grid--two">
-                <FormField id="api-farm-name" label="Nombre del predio" required>
-                  <TextInput id="api-farm-name" value={farmName} maxLength={180} onChange={(event) => setFarmName(event.target.value)} required />
-                </FormField>
-                <FormField id="api-farm-path" label="Vereda">
-                  <TextInput id="api-farm-path" value={farmPath} maxLength={180} onChange={(event) => setFarmPath(event.target.value)} />
-                </FormField>
-                <FormField id="api-farm-department" label="Departamento" required>
-                  <select id="api-farm-department" className="input input--select" value={departmentCode} onChange={(event) => { setDepartmentCode(event.target.value); setMunicipalityCode(''); }} required>
-                    <option value="">Selecciona un departamento</option>
-                    {DEPARTMENTS.map((item) => <option key={item.code} value={item.code}>{item.name}</option>)}
-                  </select>
-                </FormField>
-                <FormField id="api-farm-municipality" label="Municipio" required>
-                  <select id="api-farm-municipality" className="input input--select" value={municipalityCode} onChange={(event) => setMunicipalityCode(event.target.value)} disabled={!departmentCode} required>
-                    <option value="">Selecciona un municipio</option>
-                    {municipalities.map((item) => <option key={item.code} value={item.code}>{item.name}</option>)}
-                  </select>
-                </FormField>
-                <FormField id="api-farm-animals" label="Total de animales" required>
-                  <TextInput id="api-farm-animals" type="number" min={1} step={1} value={animalCount} onChange={(event) => setAnimalCount(event.target.value)} required />
-                </FormField>
-                <FormField id="api-farm-breeding" label="Hembras de cría">
-                  <TextInput id="api-farm-breeding" type="number" min={0} step={1} value={breedingFemales} onChange={(event) => setBreedingFemales(event.target.value)} />
-                </FormField>
-                <FormField id="api-farm-fattening" label="Animales de engorde">
-                  <TextInput id="api-farm-fattening" type="number" min={0} step={1} value={fatteningAnimals} onChange={(event) => setFatteningAnimals(event.target.value)} />
-                </FormField>
-              </div>
-              <Button type="submit" loading={savingFarm} disabled={savingFarm || !farmPersonId}>Registrar predio</Button>
-            </form>
-          )}
-          {farms.length ? (
+              <FormField id="api-farm-municipality" label="Municipio" required>
+                <select id="api-farm-municipality" className="input input--select" value={municipalityCode} onChange={(event) => setMunicipalityCode(event.target.value)} disabled={!departmentCode} required>
+                  <option value="">Selecciona un municipio</option>
+                  {municipalities.map((item) => <option key={item.code} value={item.code}>{item.name}</option>)}
+                </select>
+              </FormField>
+              <FormField
+                id="api-farm-animals"
+                label="Total de animales"
+                error={farmCountError}
+                required
+              >
+                <TextInput
+                  id="api-farm-animals"
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={animalCount}
+                  onChange={(event) => {
+                    setAnimalCount(event.target.value);
+                    setFarmCountError(undefined);
+                  }}
+                  invalid={Boolean(farmCountError)}
+                  required
+                />
+              </FormField>
+              <FormField id="api-farm-breeding" label="Hembras de cría">
+                <TextInput
+                  id="api-farm-breeding"
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={breedingFemales}
+                  onChange={(event) => {
+                    setBreedingFemales(event.target.value);
+                    setFarmCountError(undefined);
+                  }}
+                />
+              </FormField>
+              <FormField id="api-farm-fattening" label="Animales de engorde">
+                <TextInput
+                  id="api-farm-fattening"
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={fatteningAnimals}
+                  onChange={(event) => {
+                    setFatteningAnimals(event.target.value);
+                    setFarmCountError(undefined);
+                  }}
+                />
+              </FormField>
+            </div>
+            <Button type="submit" loading={savingFarm} disabled={savingFarm}>Registrar predio</Button>
+          </form>
+          {showSubmittedFarms && selectedFarms.length ? (
             <div className="saved-list">
-              {farms.map((farm) => {
-                const personName = people.find((item) => item.id === farm.personId)?.nombres ?? 'Persona vinculada';
+              {selectedFarms.map((farm) => {
+                const personName = availablePeople.find((item) => item.id === farm.personId)?.nombres ?? 'Persona vinculada';
                 return (
                   <Link
                     className="saved-card saved-card--link"
@@ -386,6 +515,8 @@ export function ApiPersonRegistrationPage() {
                 );
               })}
             </div>
+          ) : showSubmittedFarms ? (
+            <Alert tone="info">La persona no tiene predios registrados.</Alert>
           ) : null}
         </section>
       </div>
