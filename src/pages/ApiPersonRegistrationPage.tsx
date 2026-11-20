@@ -1,10 +1,10 @@
-import { ArrowRight, CheckCircle2, MailCheck, UserRoundPlus } from 'lucide-react';
-import { useState, type FormEvent } from 'react';
-import { useEffect } from 'react';
+import { ArrowRight, CheckCircle2, MailCheck, Search, UserRoundPlus } from 'lucide-react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { Alert } from '../components/Alert';
 import { Button } from '../components/Button';
 import { FormField, TextInput } from '../components/FormField';
+import { Modal } from '../components/Modal';
 import { PageHeader } from '../components/PageHeader';
 import { apiRequest } from '../api/client';
 import {
@@ -40,6 +40,7 @@ const EMPTY_PERSON: PersonDraft = { cedula: '', nombres: '', celular: '', correo
 export function ApiPersonRegistrationPage() {
   const { notify } = useToast();
   const [person, setPerson] = useState<PersonDraft>(EMPTY_PERSON);
+  const [ownerInitialPassword, setOwnerInitialPassword] = useState('');
   const [codeRequested, setCodeRequested] = useState(false);
   const [code, setCode] = useState('');
   const [verificationToken, setVerificationToken] = useState('');
@@ -52,6 +53,8 @@ export function ApiPersonRegistrationPage() {
   const [registeredPerson, setRegisteredPerson] = useState<ApiPerson | null>(null);
   const [createdFarms, setCreatedFarms] = useState<ApiFarm[]>([]);
   const [farmCedula, setFarmCedula] = useState('');
+  const [personSearchOpen, setPersonSearchOpen] = useState(false);
+  const [personSearchCedula, setPersonSearchCedula] = useState('');
   const [farmPersonError, setFarmPersonError] = useState<string | undefined>();
   const [farmCountError, setFarmCountError] = useState<string | undefined>();
   const [submittedFarmPersonId, setSubmittedFarmPersonId] = useState('');
@@ -85,6 +88,9 @@ export function ApiPersonRegistrationPage() {
       ? [...people, registeredPerson]
       : people;
   const matchedFarmPerson = availablePeople.find((item) => item.cedula === farmCedula.trim());
+  const searchedPeople = personSearchCedula.trim()
+    ? availablePeople.filter((item) => item.cedula.includes(personSearchCedula.trim()))
+    : [];
   const selectedFarms = matchedFarmPerson
     ? createdFarms.filter((farm) => farm.personId === matchedFarmPerson.id)
     : [];
@@ -106,6 +112,7 @@ export function ApiPersonRegistrationPage() {
 
   function updatePerson<K extends keyof PersonDraft>(key: K, value: PersonDraft[K]) {
     setPerson((current) => ({ ...current, [key]: value }));
+    setOwnerInitialPassword('');
     setVerificationToken('');
     setCodeRequested(false);
     setPersonId('');
@@ -117,6 +124,7 @@ export function ApiPersonRegistrationPage() {
     setSendingCode(true);
     setError(null);
     setVerificationToken('');
+    setOwnerInitialPassword('');
     setPersonId('');
     try {
       await apiRequest<{ message: string }>('/people/verification-codes', {
@@ -160,16 +168,26 @@ export function ApiPersonRegistrationPage() {
     setSaving(true);
     setError(null);
     try {
-      const response = await apiRequest<{ id: string; nombres: string }>('/people', {
+      const response = await apiRequest<{
+        id: string;
+        nombres: string;
+        ownerAccountCreated: boolean;
+      }>('/people', {
         method: 'POST',
         body: {
           cedula: person.cedula.trim(),
           nombres: person.nombres.trim(),
           celular: person.celular.trim(),
           correo: person.correo.trim().toLowerCase(),
-          verificationToken
+          verificationToken,
+          ownerInitialPassword
         }
       });
+      if (response.ownerAccountCreated !== true) {
+        throw new Error(
+          'El backend no confirmó la creación de la cuenta propietaria. No repitas el registro; solicita verificar la cuenta.'
+        );
+      }
       setRegisteredPerson({
         id: response.id,
         cedula: person.cedula.trim(),
@@ -177,10 +195,11 @@ export function ApiPersonRegistrationPage() {
       });
       setPersonId(response.id);
       setVerificationToken('');
+      setOwnerInitialPassword('');
       setFarmCedula(person.cedula.trim());
       setPerson(EMPTY_PERSON);
       setCode('');
-      notify('Persona registrada en el sistema.');
+      notify('Persona y cuenta propietaria registradas correctamente.');
       await loadPeople();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'No se pudo registrar la persona.');
@@ -244,13 +263,13 @@ export function ApiPersonRegistrationPage() {
       <PageHeader
         eyebrow="Registro en el backend"
         title="Registrar persona"
-        description="Este registro se guarda en MariaDB. Verifica primero el correo; la verificación no crea por sí misma una cuenta de acceso."
+        description="El registro en MariaDB crea también la cuenta Propietario vinculada. Configura una contraseña temporal única para cada propietario y entrégasela por un canal seguro."
       />
 
       {error ? <Alert tone="danger">{error}</Alert> : null}
       {personId ? (
-        <Alert tone="success" title="Persona creada en el backend">
-          Copia el UUID de esta persona para vincularla al crear su cuenta propietaria:
+        <Alert tone="success" title="Persona y cuenta propietaria creadas">
+          La cuenta usa el correo verificado. Entrega al propietario, por un canal seguro, la contraseña temporal única que configuraste; deberá cambiarla antes de usar el sistema. UUID de la persona:
           <p><code>{personId}</code></p>
         </Alert>
       ) : null}
@@ -360,13 +379,32 @@ export function ApiPersonRegistrationPage() {
               {verificationToken ? (
                 <Alert tone="success">Correo verificado. El comprobante vence en 15 minutos.</Alert>
               ) : null}
+              {verificationToken ? (
+                <FormField
+                  id="api-owner-initial-password"
+                  label="Contraseña temporal del propietario"
+                  hint="Mínimo 12 caracteres. Usa una distinta para cada propietario y entrégala por un canal seguro."
+                  required
+                >
+                  <TextInput
+                    id="api-owner-initial-password"
+                    type="password"
+                    autoComplete="new-password"
+                    minLength={12}
+                    maxLength={128}
+                    value={ownerInitialPassword}
+                    onChange={(event) => setOwnerInitialPassword(event.target.value)}
+                    required
+                  />
+                </FormField>
+              ) : null}
               <Button
                 type="submit"
                 icon={<CheckCircle2 size={17} />}
                 loading={verifying || saving}
                 disabled={verifying || saving || Boolean(personId) || !codeRequested}
               >
-                {verificationToken ? 'Registrar persona en el backend' : 'Verificar código'}
+                {verificationToken ? 'Registrar persona y crear cuenta' : 'Verificar código'}
               </Button>
             </form>
           </section>
@@ -401,6 +439,17 @@ export function ApiPersonRegistrationPage() {
                   }}
                   required
                 />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  icon={<Search size={16} />}
+                  onClick={() => {
+                    setPersonSearchCedula(farmCedula);
+                    setPersonSearchOpen(true);
+                  }}
+                >
+                  Buscar persona
+                </Button>
               </FormField>
               <FormField id="api-farm-person" label="Persona responsable">
                 <TextInput id="api-farm-person" value={matchedFarmPerson?.nombres ?? ''} readOnly />
@@ -520,6 +569,57 @@ export function ApiPersonRegistrationPage() {
           ) : null}
         </section>
       </div>
+      <Modal
+        open={personSearchOpen}
+        title="Buscar persona por cédula"
+        description="Busca una persona registrada y selecciónala para vincular su predio."
+        onClose={() => setPersonSearchOpen(false)}
+      >
+        <div className="form">
+          <FormField id="api-person-search-cedula" label="Cédula">
+            <div className="search-box people-search">
+              <Search size={17} aria-hidden="true" />
+              <TextInput
+                id="api-person-search-cedula"
+                type="search"
+                inputMode="numeric"
+                value={personSearchCedula}
+                onChange={(event) => setPersonSearchCedula(event.target.value)}
+                autoFocus
+              />
+            </div>
+          </FormField>
+          <div className="person-results" aria-live="polite">
+            {searchedPeople.length ? (
+              searchedPeople.map((item) => (
+                <button
+                  type="button"
+                  className="person-result"
+                  key={item.id}
+                  onClick={() => {
+                    setFarmCedula(item.cedula);
+                    setFarmPersonError(undefined);
+                    setSubmittedFarmPersonId('');
+                    setPersonSearchOpen(false);
+                  }}
+                >
+                  <span className="person-result__main">
+                    <strong>{item.nombres}</strong>
+                    <small>C.C. {item.cedula}</small>
+                  </span>
+                  <span className="person-result__farms">Seleccionar</span>
+                </button>
+              ))
+            ) : (
+              <p className="people-empty">
+                {personSearchCedula.trim()
+                  ? 'No encontramos personas con esa cédula.'
+                  : 'Ingresa una cédula para buscar.'}
+              </p>
+            )}
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

@@ -20,7 +20,11 @@ describe('registro de persona conectado al backend', () => {
         return { verificationToken: 'verification-proof-from-api' };
       }
       if (path === '/people' && options?.method === 'POST') {
-        return { id: 'person-uuid-from-api', nombres: 'Persona registrada' };
+        return {
+          id: 'person-uuid-from-api',
+          nombres: 'Persona registrada',
+          ownerAccountCreated: true
+        };
       }
       if (path === '/people') return { items: [] };
       if (path === '/farms') return { items: [] };
@@ -56,8 +60,12 @@ describe('registro de persona conectado al backend', () => {
       })
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Registrar persona en el backend' }));
+    fireEvent.change(screen.getByLabelText(/Contraseña temporal del propietario/), {
+      target: { value: 'OwnerTemp-Initial-2026!' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Registrar persona y crear cuenta' }));
     expect(await screen.findByText('person-uuid-from-api')).toBeInTheDocument();
+    expect(await screen.findByText('Persona y cuenta propietaria creadas')).toBeInTheDocument();
     expect(screen.getByLabelText(/Cédula de la persona responsable/)).toHaveValue('12345678');
     expect(screen.getByLabelText(/^Persona responsable$/)).toHaveValue('Persona registrada');
     expect(apiRequest).toHaveBeenCalledWith('/people', {
@@ -67,9 +75,11 @@ describe('registro de persona conectado al backend', () => {
         nombres: 'Persona registrada',
         celular: '3001234567',
         correo: 'persona@example.org',
-        verificationToken: 'verification-proof-from-api'
+        verificationToken: 'verification-proof-from-api',
+        ownerInitialPassword: 'OwnerTemp-Initial-2026!'
       }
     });
+    expect(screen.queryByLabelText(/Contraseña temporal del propietario/)).not.toBeInTheDocument();
   }, 20_000);
 
   it('vincula el predio usando una cédula registrada y muestra las tarjetas tras guardarlo', async () => {
@@ -101,6 +111,10 @@ describe('registro de persona conectado al backend', () => {
 
     const cedulaField = await screen.findByLabelText(/Cédula de la persona responsable/);
     fireEvent.change(cedulaField, { target: { value: '12345678' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Buscar persona' }));
+    expect(screen.getByLabelText(/^Cédula$/)).toHaveValue('12345678');
+    fireEvent.click(screen.getByRole('button', { name: /María Rojas.*12345678/ }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(screen.getByLabelText(/^Persona responsable$/)).toHaveValue('María Rojas');
     expect(screen.queryByRole('link', { name: /Granja La Esperanza/ })).not.toBeInTheDocument();
     const productionSystemField = screen.getByLabelText('Sistema de producción');

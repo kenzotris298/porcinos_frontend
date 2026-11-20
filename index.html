@@ -10,6 +10,12 @@
     <meta name="theme-color" content="#155e4f" />
     <link rel="icon" type="image/svg+xml" href="/brand/favicon.svg" />
     <title>Bienestar Porcino | ICA</title>
+    <script>
+      const githubPagesRoute = new URLSearchParams(window.location.search).get('p');
+      if (githubPagesRoute !== null) {
+        window.history.replaceState(null, '', `/porcinos_frontend/${githubPagesRoute}`);
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

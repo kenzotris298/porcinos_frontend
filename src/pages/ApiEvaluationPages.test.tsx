@@ -101,7 +101,8 @@ describe('evaluaciones conectadas al sistema', () => {
     expect(await screen.findByText('Recomendaciones creadas.')).toBeInTheDocument();
   });
 
-  it('carga una foto desde el detalle y la asocia al indicador seleccionado', async () => {
+  it('guarda y elimina una foto y deja en la lista solo indicadores sin fotos', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
     const evaluation = {
       id: 'evaluation-uuid',
       farmId: 'farm-uuid',
@@ -125,6 +126,12 @@ describe('evaluaciones conectadas al sistema', () => {
       puntaje: 0,
       observaciones: ''
     };
+    const secondIndicator = {
+      ...indicator,
+      id: 'second-indicator-uuid',
+      criterionId: 'limpieza-bebederos',
+      nombre: 'Estado de los bebederos'
+    };
     const uploadedEvidence = {
       id: 'evidence-uuid',
       evaluationId: evaluation.id,
@@ -136,7 +143,9 @@ describe('evaluaciones conectadas al sistema', () => {
     };
     vi.mocked(apiRequest).mockImplementation(async (path, options) => {
       if (path === '/evaluations/evaluation-uuid') return { item: evaluation };
-      if (path === '/indicators?evaluationId=evaluation-uuid') return { items: [indicator] };
+      if (path === '/indicators?evaluationId=evaluation-uuid') {
+        return { items: [indicator, secondIndicator] };
+      }
       if (path === '/evaluations/evaluation-uuid/result') {
         return {
           result: {
@@ -154,6 +163,9 @@ describe('evaluaciones conectadas al sistema', () => {
       if (path === '/recommendation-plans') return { items: [] };
       if (path === '/evidence' && options?.method === 'POST') {
         return { item: uploadedEvidence };
+      }
+      if (path === '/evidence/evidence-uuid' && options?.method === 'DELETE') {
+        return undefined;
       }
       throw new Error(`Solicitud inesperada: ${path}`);
     });
@@ -179,8 +191,8 @@ describe('evaluaciones conectadas al sistema', () => {
     Object.defineProperty(file, 'arrayBuffer', {
       value: async () => new TextEncoder().encode('photo').buffer
     });
-    fireEvent.change(screen.getByLabelText(/Seleccionar fotos/), { target: { files: [file] } });
-    const uploadButton = screen.getByRole('button', { name: 'Asociar foto' });
+    fireEvent.change(screen.getByLabelText(/Seleccionar foto/), { target: { files: [file] } });
+    const uploadButton = screen.getByRole('button', { name: 'Guardar foto' });
     await waitFor(() => expect(uploadButton).toBeEnabled());
     const uploadForm = uploadButton.closest('form');
     if (!(uploadForm instanceof HTMLFormElement)) throw new Error('No se encontró el formulario de carga.');
@@ -199,7 +211,20 @@ describe('evaluaciones conectadas al sistema', () => {
       });
     });
     expect(await screen.findByAltText('comedero.png')).toBeInTheDocument();
-    expect(screen.getByText('1 foto')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Evidencias (1)' })).toBeInTheDocument();
+    const indicatorRail = screen.getByRole('navigation', { name: 'Indicadores para adjuntar fotos' });
+    expect(within(indicatorRail).queryByRole('button', { name: /Estado de los comederos/ }))
+      .not.toBeInTheDocument();
+    expect(within(indicatorRail).getByRole('button', { name: /Estado de los bebederos/ }))
+      .toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Eliminar foto comedero.png' }));
+    await waitFor(() => {
+      expect(apiRequest).toHaveBeenCalledWith('/evidence/evidence-uuid', { method: 'DELETE' });
+    });
+    expect(await screen.findByRole('button', { name: /Estado de los comederos/ }))
+      .toBeInTheDocument();
+    expect(screen.queryByAltText('comedero.png')).not.toBeInTheDocument();
   });
 
   it('conserva la composición del panel cuando el backend no tiene registros', async () => {

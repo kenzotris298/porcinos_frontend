@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bienestar Porcino | ICA</title>
+    <script>
+      const basePath = '/porcinos_frontend/';
+      const route = window.location.pathname.startsWith(basePath)
+        ? window.location.pathname.slice(basePath.length)
+        : '';
+      const returnPath = `${route}${window.location.search}${window.location.hash}`;
+      window.location.replace(`${basePath}?p=${encodeURIComponent(returnPath)}`);
+    </script>
+  </head>
+  <body></body>
+</html>

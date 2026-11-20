@@ -834,6 +834,7 @@ export function ApiEvaluationDetailPage() {
   const [evidenceIndicatorId, setEvidenceIndicatorId] = useState('');
   const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
   const [uploadingEvidence, setUploadingEvidence] = useState(false);
+  const [deletingEvidenceId, setDeletingEvidenceId] = useState('');
   const [plans, setPlans] = useState<ApiRecommendationPlan[]>([]);
   const [result, setResult] = useState<ApiEvaluationResult | null>(null);
   const [loading, setLoading] = useState(true);
@@ -868,10 +869,17 @@ export function ApiEvaluationDetailPage() {
       setIndicators(indicatorResponse.items);
       setResult(resultResponse.result);
       setEvidence(evidenceResponse.items);
+      const indicatorsWithPhotos = new Set(
+        evidenceResponse.items
+          .filter((item) => item.mimeType.startsWith('image/'))
+          .map((item) => item.indicatorId)
+      );
       setEvidenceIndicatorId((current) =>
-        indicatorResponse.items.some((indicator) => indicator.id === current)
+        indicatorResponse.items.some(
+          (indicator) => indicator.id === current && !indicatorsWithPhotos.has(indicator.id)
+        )
           ? current
-          : indicatorResponse.items[0]?.id ?? ''
+          : indicatorResponse.items.find((indicator) => !indicatorsWithPhotos.has(indicator.id))?.id ?? ''
       );
       setPlans(planResponse.items);
     } catch (reason) {
@@ -906,6 +914,16 @@ export function ApiEvaluationDetailPage() {
       ? 0
       : Math.min(100, Math.max(0, activeLibertyScore));
   const modalLibertyPendingCount = libertyId ? pendingCriteriaCountForLiberty(libertyId) : 0;
+  const indicatorsWithoutPhotos = indicators.filter(
+    (indicator) =>
+      !evidence.some(
+        (item) => item.indicatorId === indicator.id && item.mimeType.startsWith('image/')
+      )
+  );
+  const selectedIndicatorPhotos = evidence.filter(
+    (item) =>
+      item.indicatorId === evidenceIndicatorId && item.mimeType.startsWith('image/')
+  );
 
   async function saveIndicator() {
     const rubric = CRITERION_RUBRICS[criterionId];
@@ -1011,6 +1029,25 @@ export function ApiEvaluationDetailPage() {
       setError(reason instanceof Error ? reason.message : 'No se pudo cargar la foto.');
     } finally {
       setUploadingEvidence(false);
+    }
+  }
+
+  async function deleteEvidencePhoto(item: ApiEvidenceRecord) {
+    if (deletingEvidenceId) return;
+    if (!window.confirm(`¿Eliminar la foto "${item.nombre}"? Esta acción no se puede deshacer.`)) return;
+    setDeletingEvidenceId(item.id);
+    setError('');
+    try {
+      await apiRequest<void>(`/evidence/${encodeURIComponent(item.id)}`, { method: 'DELETE' });
+      setEvidence((current) => current.filter((evidenceItem) => evidenceItem.id !== item.id));
+      setEvidenceFile(null);
+      const fileInput = document.getElementById('evaluation-indicator-photo');
+      if (fileInput instanceof HTMLInputElement) fileInput.value = '';
+      notify('Foto eliminada.');
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'No se pudo eliminar la foto.');
+    } finally {
+      setDeletingEvidenceId('');
     }
   }
 
@@ -1564,11 +1601,8 @@ export function ApiEvaluationDetailPage() {
           {canEdit && evaluation.estado === 'En proceso' ? (
             <div className="api-liberty-browser__layout evidence-indicator-browser">
               <nav className="api-liberty-rail" aria-label="Indicadores para adjuntar fotos">
-                {indicators.map((indicator) => {
-                  const photoCount = evidence.filter(
-                    (item) => item.indicatorId === indicator.id && item.mimeType.startsWith('image/')
-                  ).length;
-                  return (
+                {indicatorsWithoutPhotos.length ? (
+                  indicatorsWithoutPhotos.map((indicator) => (
                     <button
                       className={`api-liberty-rail__item ${evidenceIndicatorId === indicator.id ? 'api-liberty-rail__item--selected' : ''}`}
                       type="button"
@@ -1580,12 +1614,16 @@ export function ApiEvaluationDetailPage() {
                       }}
                     >
                       <span className="api-liberty-rail__text">{indicator.nombre}</span>
-                      <Badge tone={photoCount ? 'success' : 'neutral'}>
-                        {photoCount} {photoCount === 1 ? 'foto' : 'fotos'}
-                      </Badge>
+                      <Badge tone="neutral">0 fotos</Badge>
                     </button>
-                  );
-                })}
+                  ))
+                ) : (
+                  <p className="text-muted">
+                    {indicators.length
+                      ? 'Todos los indicadores ya tienen fotos asociadas.'
+                      : 'No hay indicadores registrados para asociar fotos.'}
+                  </p>
+                )}
               </nav>
               <div className="api-liberty-browser__content" aria-live="polite">
                 {evidenceIndicatorId ? (
@@ -1596,46 +1634,14 @@ export function ApiEvaluationDetailPage() {
                         <h3>{indicators.find((item) => item.id === evidenceIndicatorId)?.nombre}</h3>
                       </div>
                     </header>
-                    <form className="evidence-indicator-upload" onSubmit={uploadIndicatorPhoto}>
-                      <FormField
-                        id="evaluation-indicator-photo"
-                        label="Seleccionar fotos"
-                        hint="JPEG, PNG o WebP · máximo 5 MB por foto"
-                        required
-                      >
-                        <TextInput
-                          id="evaluation-indicator-photo"
-                          type="file"
-                          accept="image/jpeg,image/png,image/webp"
-                          onChange={(event) => setEvidenceFile(event.target.files?.[0] ?? null)}
-                          required
-                        />
-                      </FormField>
-                      <Button
-                        type="submit"
-                        size="sm"
-                        icon={<UploadCloud size={16} />}
-                        loading={uploadingEvidence}
-                        disabled={!evidenceFile || uploadingEvidence}
-                      >
-                        Asociar foto
-                      </Button>
-                    </form>
-                    {evidence.some((item) =>
-                      item.indicatorId === evidenceIndicatorId && item.mimeType.startsWith('image/')
-                    ) ? (
+                    {selectedIndicatorPhotos.length ? (
                       <div className="evidence-indicator-photos">
-                        {evidence
-                          .filter((item) =>
-                            item.indicatorId === evidenceIndicatorId && item.mimeType.startsWith('image/')
-                          )
-                          .map((item) => (
+                        {selectedIndicatorPhotos.map((item) => (
+                          <div className="evidence-indicator-photo" key={item.id}>
                             <a
-                              className="evidence-indicator-photo"
                               href={apiUrl(`/evidence/${encodeURIComponent(item.id)}/content`)}
                               target="_blank"
                               rel="noreferrer"
-                              key={item.id}
                             >
                               <img
                                 src={apiUrl(`/evidence/${encodeURIComponent(item.id)}/content`)}
@@ -1645,10 +1651,48 @@ export function ApiEvaluationDetailPage() {
                               />
                               <span>{item.nombre}</span>
                             </a>
-                          ))}
+                            <button
+                              type="button"
+                              className="icon-button icon-button--sm icon-button--danger"
+                              aria-label={`Eliminar foto ${item.nombre}`}
+                              title="Eliminar foto"
+                              onClick={() => void deleteEvidencePhoto(item)}
+                              disabled={Boolean(deletingEvidenceId)}
+                            >
+                              <Trash2 size={15} aria-hidden="true" />
+                            </button>
+                          </div>
+                        ))}
                       </div>
                     ) : (
-                      <p className="text-muted">Este indicador todavía no tiene fotos asociadas.</p>
+                      <>
+                        <form className="evidence-indicator-upload" onSubmit={uploadIndicatorPhoto}>
+                          <FormField
+                            id="evaluation-indicator-photo"
+                            label="Seleccionar foto"
+                            hint="JPEG, PNG o WebP · máximo 5 MB"
+                            required
+                          >
+                            <TextInput
+                              id="evaluation-indicator-photo"
+                              type="file"
+                              accept="image/jpeg,image/png,image/webp"
+                              onChange={(event) => setEvidenceFile(event.target.files?.[0] ?? null)}
+                              required
+                            />
+                          </FormField>
+                          <Button
+                            type="submit"
+                            size="sm"
+                            icon={<UploadCloud size={16} />}
+                            loading={uploadingEvidence}
+                            disabled={!evidenceFile || uploadingEvidence}
+                          >
+                            Guardar foto
+                          </Button>
+                        </form>
+                        <p className="text-muted">Este indicador todavía no tiene fotos asociadas.</p>
+                      </>
                     )}
                   </>
                 ) : (
@@ -1660,18 +1704,35 @@ export function ApiEvaluationDetailPage() {
           {evidence.length ? (
             <div className="file-list">
               {evidence.map((item) => (
-                <Link to={`/evidencias?evaluacion=${encodeURIComponent(id)}`} className="file-row" key={item.id}>
-                  <span className="file-row__thumb">
-                    {item.mimeType.startsWith('image/')
-                      ? <img src={apiUrl(`/evidence/${encodeURIComponent(item.id)}/content`)} alt="" loading="lazy" crossOrigin="use-credentials" />
-                      : <FileText size={20} aria-hidden="true" />}
-                  </span>
-                  <span className="file-row__text">
-                    <strong>{item.nombre}</strong>
-                    <small>{indicatorName(item.indicatorId)} · {formatBytes(item.size)}</small>
-                  </span>
-                  <ArrowUpRight size={16} aria-hidden="true" />
-                </Link>
+                <div className="file-row-container" key={item.id}>
+                  <Link to={`/evidencias?evaluacion=${encodeURIComponent(id)}`} className="file-row">
+                    <span className="file-row__thumb">
+                      {item.mimeType.startsWith('image/')
+                        ? <img src={apiUrl(`/evidence/${encodeURIComponent(item.id)}/content`)} alt="" loading="lazy" crossOrigin="use-credentials" />
+                        : <FileText size={20} aria-hidden="true" />}
+                    </span>
+                    <span className="file-row__text">
+                      <strong>{item.nombre}</strong>
+                      <small>{indicatorName(item.indicatorId)} · {formatBytes(item.size)}</small>
+                    </span>
+                    <ArrowUpRight size={16} aria-hidden="true" />
+                  </Link>
+                  {canEdit &&
+                  evaluation.estado === 'En proceso' &&
+                  item.mimeType.startsWith('image/') &&
+                  item.indicatorId !== evidenceIndicatorId ? (
+                    <button
+                      type="button"
+                      className="icon-button icon-button--sm icon-button--danger"
+                      aria-label={`Eliminar foto ${item.nombre}`}
+                      title="Eliminar foto"
+                      onClick={() => void deleteEvidencePhoto(item)}
+                      disabled={Boolean(deletingEvidenceId)}
+                    >
+                      <Trash2 size={15} aria-hidden="true" />
+                    </button>
+                  ) : null}
+                </div>
               ))}
             </div>
           ) : <p className="text-muted">Esta evaluación todavía no tiene evidencias cargadas.</p>}
